@@ -1,0 +1,32 @@
+{
+  "name": "google-sheets-mcp-server",
+  "version": "1.0.0",
+  "description": "Cloudflare MCP server for Google Sheets integration with OpenAI Custom GPT",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "wrangler build",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "google-auth-library": "^9.0.0",
+    "googleapis": "^126.0.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20231025.0",
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2",
+    "vitest": "^0.34.6",
+    "wrangler": "^3.15.0"
+  },
+  "keywords": [
+    "mcp",
+    "google-sheets",
+    "cloudflare",
+    "openai",
+    "gpt"
+  ],
+  "author": "Drew McCauley",
+  "license": "MIT"
+} 
