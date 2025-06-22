@@ -64,6 +64,8 @@ export interface VerbalResponse {
 export interface Env {
   GOOGLE_SERVICE_ACCOUNT_KEY: string;
   DEFAULT_SPREADSHEET_ID?: string;
+  QUICKBOOKS_CLIENT_ID?: string;
+  QUICKBOOKS_CLIENT_SECRET?: string;
   ALLOWED_ORIGINS?: string;
   NODE_ENV?: string;
   MCP_VERSION?: string;
@@ -79,4 +81,57 @@ export interface ParsedQuery {
   offset?: number;
   filters?: Record<string, any>;
   requestedColumns?: string[];
+}
+
+// QuickBooks Types
+export interface QuickBooksQueryParams {
+  action: 'search_invoices' | 'get_invoice' | 'get_company_info';
+  dateRange?: {
+    start: string;
+    end: string;
+  };
+  amountRange?: {
+    min: number;
+    max: number;
+  };
+  limit?: number;
+  customerId?: string;
+  status?: string;
+}
+
+export interface QuickBooksInvoice {
+  id: string;
+  docNumber: string;
+  txnDate: string;
+  dueDate: string;
+  totalAmt: number;
+  balance: number;
+  customerRef: {
+    value: string;
+    name: string;
+  };
+  line: Array<{
+    amount: number;
+    detailType: string;
+    salesItemLineDetail?: {
+      itemRef: {
+        value: string;
+        name: string;
+      };
+      qty: number;
+      unitPrice: number;
+    };
+  }>;
+}
+
+export interface QuickBooksResponse {
+  companyId: string;
+  invoices: QuickBooksInvoice[];
+  totalCount: number;
+  queryInfo: {
+    dateRange?: { start: string; end: string };
+    amountRange?: { min: number; max: number };
+    limit?: number;
+    executedAt: string;
+  };
 } 

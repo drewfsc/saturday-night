@@ -1,17 +1,24 @@
-import { MCPRequest, MCPResponse, MCPTool, MCPError, VerbalResponse } from './types';
+import { MCPRequest, MCPResponse, MCPTool, MCPError, VerbalResponse, QuickBooksQueryParams } from './types';
 import { GoogleSheetsService } from './google-sheets';
+import { QuickBooksService } from './quickbooks';
 
 export class MCPServer {
   private googleSheets: GoogleSheetsService;
+  private quickBooks?: QuickBooksService;
   private tools: MCPTool[];
 
-  constructor(serviceAccountKey: string, defaultSpreadsheetId?: string) {
+  constructor(serviceAccountKey: string, defaultSpreadsheetId?: string, quickBooksClientId?: string, quickBooksClientSecret?: string) {
     this.googleSheets = new GoogleSheetsService(serviceAccountKey, defaultSpreadsheetId);
+    
+    if (quickBooksClientId && quickBooksClientSecret) {
+      this.quickBooks = new QuickBooksService(quickBooksClientId, quickBooksClientSecret);
+    }
+    
     this.tools = this.initializeTools();
   }
 
   private initializeTools(): MCPTool[] {
-    return [
+    const tools: MCPTool[] = [
       {
         name: 'query_google_sheets',
         description: 'Query Google Sheets data using natural language. Supports getting rows, sheet information, and specific ranges.',
@@ -50,6 +57,33 @@ export class MCPServer {
         }
       }
     ];
+
+    // Add QuickBooks tools if service is available
+    if (this.quickBooks) {
+      tools.push(
+        {
+          name: 'search_quickbooks_invoices',
+          description: 'Search QuickBooks invoices using natural language. Supports filtering by date range, amount range, customer, and status.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: 'Natural language query describing what invoices to find (e.g., "invoices from January 2025 over $1000", "invoices for Acme Corp this month")'
+              },
+              responseFormat: {
+                type: 'string',
+                enum: ['verbal', 'structured', 'both'],
+                description: 'Format of response - verbal for conversational output, structured for raw data, both for complete response'
+              }
+            },
+            required: ['query']
+          }
+        }
+      );
+    }
+
+    return tools;
   }
 
   async handleRequest(request: MCPRequest): Promise<MCPResponse> {
@@ -81,18 +115,19 @@ export class MCPServer {
   }
 
   private handleInitialize(): MCPResponse {
-    return {
-      result: {
-        protocolVersion: '2024-11-05',
-        capabilities: {
-          tools: {},
-        },
-        serverInfo: {
-          name: 'Google Sheets MCP Server',
-          version: '1.0.0',
-        },
-      },
-    };
+            return {
+          result: {
+            protocolVersion: '2024-11-05',
+            capabilities: {
+              tools: {},
+            },
+            serverInfo: {
+              name: 'Multi-Source MCP Server',
+              version: '1.1.0',
+              description: 'MCP Server supporting Google Sheets and QuickBooks integration',
+            },
+          },
+        };
   }
 
   private handleListTools(): MCPResponse {
@@ -112,6 +147,9 @@ export class MCPServer {
       
       case 'get_sheet_info':
         return await this.handleSheetInfo(args, request.id);
+      
+      case 'search_quickbooks_invoices':
+        return await this.handleQuickBooksQuery(args, request.id);
       
       default:
         return this.createErrorResponse(
@@ -204,6 +242,85 @@ export class MCPServer {
         requestId
       );
     }
+  }
+
+  private async handleQuickBooksQuery(args: any, requestId?: string | number): Promise<MCPResponse> {
+    try {
+      if (!this.quickBooks) {
+        return this.createErrorResponse(
+          -32601,
+          'QuickBooks service is not configured. Please provide QuickBooks credentials.',
+          requestId
+        );
+      }
+
+      const { query, responseFormat = 'both' } = args;
+
+      if (!query) {
+        return this.createErrorResponse(
+          -32602,
+          'Query parameter is required',
+          requestId
+        );
+      }
+
+      // Parse the natural language query
+      const parsedQuery = this.quickBooks.parseQuery(query);
+      
+      // Execute the query
+      const invoiceData = await this.quickBooks.searchInvoices(parsedQuery);
+
+      // Format response based on requested format
+      let result: any = {};
+
+      if (responseFormat === 'verbal' || responseFormat === 'both') {
+        result.verbalResponse = this.quickBooks.formatForVerbalResponse(invoiceData, query);
+      }
+
+      if (responseFormat === 'structured' || responseFormat === 'both') {
+        result.data = invoiceData;
+      }
+
+      if (responseFormat === 'both') {
+        result.conversationalContext = this.generateQuickBooksContext(invoiceData, query);
+      }
+
+      return {
+        result,
+        id: requestId,
+      };
+
+    } catch (error: any) {
+      return this.createErrorResponse(
+        -32603,
+        `Failed to query QuickBooks: ${error.message}`,
+        requestId
+      );
+    }
+  }
+
+  private generateQuickBooksContext(invoiceData: any, originalQuery: string): string {
+    const { invoices, totalCount, queryInfo } = invoiceData;
+    
+    let context = `Based on your query "${originalQuery}", I searched QuickBooks invoices. `;
+    
+    if (invoices.length === 0) {
+      context += 'No invoices matched your criteria.';
+    } else {
+      context += `I found ${totalCount} invoice${totalCount !== 1 ? 's' : ''} `;
+      
+      if (queryInfo.dateRange) {
+        context += `from ${queryInfo.dateRange.start} to ${queryInfo.dateRange.end} `;
+      }
+      
+      if (queryInfo.amountRange) {
+        context += `with amounts between $${queryInfo.amountRange.min} and $${queryInfo.amountRange.max} `;
+      }
+      
+      context += '. I can provide more details about specific invoices or help you analyze this data further.';
+    }
+    
+    return context;
   }
 
   private generateConversationalContext(sheetData: any, originalQuery: string): string {
