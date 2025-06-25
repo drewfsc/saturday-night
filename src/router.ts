@@ -293,6 +293,16 @@ function handleQuickBooksAuthStatus(env: Env): Response {
   return new Response(JSON.stringify(status, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }
 
+// Public type for the route handler
+export type RouterHandler = (
+  request: Request,
+  env: Env,
+  mcpServer: MCPServer,
+) => Promise<Response>;
+
+// Ensure named export matches type
+export { route as namedRoute };
+
 export default {
   route,
 };

@@ -67,4 +67,19 @@ describe('Plugin architecture', () => {
     expect(result.verbalResponse).toBe('invoices');
     expect(services.quickBooks.parseQuery).toHaveBeenCalled();
   });
+
+  it('googleSheets plugin throws on missing query', async () => {
+    const services: any = { googleSheets: {} };
+    await expect(gsPlugin.run({}, { services })).rejects.toThrow();
+  });
+
+  it('getSheetInfo plugin errors when spreadsheetId missing', async () => {
+    const services: any = { googleSheets: {} };
+    await expect(infoPlugin.run({}, { services })).rejects.toThrow('Spreadsheet ID is required');
+  });
+
+  it('quickBooks plugin errors if service not configured', async () => {
+    const services: any = { };
+    await expect(qbPlugin.run({ query: 'x' }, { services })).rejects.toThrow('QuickBooks service is not configured');
+  });
 });
