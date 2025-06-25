@@ -4,6 +4,7 @@ import { QuickBooksService } from './quickbooks';
 import { withCache } from './cache';
 import googleSheetsPlugin from './tools/googleSheets';
 import quickBooksPlugin from './tools/quickBooks';
+import getSheetInfoPlugin from './tools/getSheetInfo';
 import type { KVNamespace } from '@cloudflare/workers-types';
 
 export class MCPServer {
@@ -54,56 +55,11 @@ export class MCPServer {
   }
 
   private loadPlugins(): MCPToolPlugin[] {
-    return [googleSheetsPlugin, quickBooksPlugin];
+    return [googleSheetsPlugin, quickBooksPlugin, getSheetInfoPlugin];
   }
 
   private initializeTools(): MCPTool[] {
-    const tools: MCPTool[] = [
-      // Plugin metas
-      ...this.plugins.map((p) => p.meta),
-      // Legacy built-in tools
-      {
-        name: 'get_sheet_info',
-        description: 'Get basic information about a Google Spreadsheet including sheet names and properties.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            spreadsheetId: {
-              type: 'string',
-              description: 'Google Sheets spreadsheet ID'
-            }
-          },
-          required: ['spreadsheetId']
-        }
-      }
-    ];
-
-    // Add QuickBooks tools if service is available
-    if (this.quickBooks) {
-      tools.push(
-        {
-          name: 'search_quickbooks_invoices',
-          description: 'Search QuickBooks invoices using natural language. Supports filtering by date range, amount range, customer, and status.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              query: {
-                type: 'string',
-                description: 'Natural language query describing what invoices to find (e.g., "invoices from January 2025 over $1000", "invoices for Acme Corp this month")'
-              },
-              responseFormat: {
-                type: 'string',
-                enum: ['verbal', 'structured', 'both'],
-                description: 'Format of response - verbal for conversational output, structured for raw data, both for complete response'
-              }
-            },
-            required: ['query']
-          }
-        }
-      );
-    }
-
-    return tools;
+    return this.plugins.map((p) => p.meta);
   }
 
   async handleRequest(request: MCPRequest): Promise<MCPResponse> {
@@ -172,45 +128,11 @@ export class MCPServer {
       }
     }
 
-    switch (name) {
-      case 'get_sheet_info':
-        return await this.handleSheetInfo(args, request.id);
-      case 'search_quickbooks_invoices':
-        return await this.handleQuickBooksQuery(args, request.id);
-      default:
-        return this.createErrorResponse(-32602, `Unknown tool: ${name}`, request.id);
+    // Fallback for legacy QuickBooks invoices until plugin-only
+    if (name === 'search_quickbooks_invoices') {
+      return await this.handleQuickBooksQuery(args, request.id);
     }
-  }
-
-  private async handleSheetInfo(args: any, requestId?: string | number): Promise<MCPResponse> {
-    try {
-      const { spreadsheetId } = args;
-
-      if (!spreadsheetId) {
-        return this.createErrorResponse(
-          -32602,
-          'Spreadsheet ID is required',
-          requestId
-        );
-      }
-
-      const info = await this.googleSheets.getSheetInfo(spreadsheetId);
-
-      return {
-        result: {
-          spreadsheetInfo: info,
-          verbalSummary: `The spreadsheet "${info.title}" contains ${info.totalSheets} sheet${info.totalSheets !== 1 ? 's' : ''}: ${info.sheets.map((s: any) => s.name).join(', ')}.`
-        },
-        id: requestId,
-      };
-
-    } catch (error: any) {
-      return this.createErrorResponse(
-        -32603,
-        `Failed to get sheet info: ${error.message}`,
-        requestId
-      );
-    }
+    return this.createErrorResponse(-32602, `Unknown tool: ${name}`, request.id);
   }
 
   private async handleQuickBooksQuery(args: any, requestId?: string | number): Promise<MCPResponse> {
