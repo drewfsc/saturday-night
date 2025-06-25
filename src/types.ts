@@ -69,6 +69,8 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   NODE_ENV?: string;
   MCP_VERSION?: string;
+  /** Optional KV namespace for caching */
+  CACHE?: KVNamespace;
 }
 
 // Natural Language Query Processing

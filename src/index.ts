@@ -20,7 +20,8 @@ export default {
       env.GOOGLE_SERVICE_ACCOUNT_KEY,
       env.DEFAULT_SPREADSHEET_ID,
       env.QUICKBOOKS_CLIENT_ID,
-      env.QUICKBOOKS_CLIENT_SECRET
+      env.QUICKBOOKS_CLIENT_SECRET,
+      env.CACHE
     );
 
     try {
