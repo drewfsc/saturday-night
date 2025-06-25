@@ -57,6 +57,9 @@ export default {
         case '/auth/quickbooks/status':
           return handleQuickBooksAuthStatus(env);
         
+        case '/auth/quickbooks/debug':
+          return handleQuickBooksAuthDebug(request, env);
+        
         default:
           return createErrorResponse('Endpoint not found', 404);
       }
@@ -614,19 +617,32 @@ function generateRandomState(): string {
 }
 
 function generateQuickBooksAuthUrl(clientId: string, redirectUri: string, state: string): string {
-  const scope = 'com.intuit.quickbooks.accounting';
+  // Use both accounting and payments scopes for Production app
+  const scope = 'com.intuit.quickbooks.accounting com.intuit.quickbooks.payment';
   const authUrl = 'https://appcenter.intuit.com/connect/oauth2';
   
-  const params = new URLSearchParams({
-    'client_id': clientId,
-    'scope': scope,
-    'redirect_uri': redirectUri,
-    'response_type': 'code',
-    'access_type': 'offline',
-    'state': state
-  });
+  // Build parameters manually to ensure proper encoding
+  const params = new URLSearchParams();
+  params.append('client_id', clientId);
+  params.append('scope', scope);
+  params.append('redirect_uri', redirectUri);
+  params.append('response_type', 'code');
+  params.append('access_type', 'offline');
+  params.append('state', state);
 
-  return `${authUrl}?${params.toString()}`;
+  const fullUrl = `${authUrl}?${params.toString()}`;
+  
+  // Validate the URL has all required parameters
+  const urlObj = new URL(fullUrl);
+  const hasResponseType = urlObj.searchParams.has('response_type');
+  const hasClientId = urlObj.searchParams.has('client_id');
+  const hasScope = urlObj.searchParams.has('scope');
+  
+  if (!hasResponseType || !hasClientId || !hasScope) {
+    throw new Error(`Invalid auth URL generated. Missing parameters: response_type=${hasResponseType}, client_id=${hasClientId}, scope=${hasScope}`);
+  }
+  
+  return fullUrl;
 }
 
 async function exchangeQuickBooksCode(code: string, redirectUri: string, env: Env): Promise<any> {
@@ -656,4 +672,49 @@ async function exchangeQuickBooksCode(code: string, redirectUri: string, env: En
   }
 
   return response.json();
+}
+
+function handleQuickBooksAuthDebug(request: Request, env: Env): Response {
+  try {
+    if (!env.QUICKBOOKS_CLIENT_ID) {
+      return createErrorResponse('QuickBooks Client ID not configured', 400);
+    }
+
+    const url = new URL(request.url);
+    const redirectUri = `${url.origin}/auth/quickbooks/callback`;
+    const state = generateRandomState();
+    const scope = 'com.intuit.quickbooks.accounting com.intuit.quickbooks.payment';
+
+    const authUrl = generateQuickBooksAuthUrl(env.QUICKBOOKS_CLIENT_ID, redirectUri, state);
+    
+    // Parse the generated URL to verify all parameters
+    const authUrlObj = new URL(authUrl);
+    const urlParams = Object.fromEntries(authUrlObj.searchParams.entries());
+
+    const debugInfo = {
+      clientId: env.QUICKBOOKS_CLIENT_ID ? 'Present' : 'Missing',
+      clientSecret: env.QUICKBOOKS_CLIENT_SECRET ? 'Present' : 'Missing',
+      redirectUri,
+      scope,
+      state,
+      authUrl,
+      urlParams,
+      validation: {
+        hasClientId: authUrlObj.searchParams.has('client_id'),
+        hasScope: authUrlObj.searchParams.has('scope'),
+        hasRedirectUri: authUrlObj.searchParams.has('redirect_uri'),
+        hasResponseType: authUrlObj.searchParams.has('response_type'),
+        hasAccessType: authUrlObj.searchParams.has('access_type'),
+        hasState: authUrlObj.searchParams.has('state')
+      },
+      instructions: 'Copy the authUrl and paste it in your browser to start OAuth flow'
+    };
+
+    return new Response(JSON.stringify(debugInfo, null, 2), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error: any) {
+    return createErrorResponse(`Debug failed: ${error.message}`, 500);
+  }
 } 
