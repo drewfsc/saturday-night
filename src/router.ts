@@ -292,3 +292,7 @@ function handleQuickBooksAuthStatus(env: Env): Response {
   };
   return new Response(JSON.stringify(status, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }
+
+export default {
+  route,
+};
