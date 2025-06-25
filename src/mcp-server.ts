@@ -1,13 +1,15 @@
-import { MCPRequest, MCPResponse, MCPTool, MCPError, VerbalResponse, QuickBooksQueryParams } from './types';
+import { MCPRequest, MCPResponse, MCPTool, MCPError, VerbalResponse, QuickBooksQueryParams, MCPToolPlugin } from './types';
 import { GoogleSheetsService } from './google-sheets';
 import { QuickBooksService } from './quickbooks';
 import { withCache } from './cache';
+import googleSheetsPlugin from './tools/googleSheets';
 import type { KVNamespace } from '@cloudflare/workers-types';
 
 export class MCPServer {
   private googleSheets: GoogleSheetsService;
   private quickBooks?: QuickBooksService;
   private tools: MCPTool[];
+  private plugins: MCPToolPlugin[];
 
   constructor(
     serviceAccountKey: string,
@@ -46,34 +48,19 @@ export class MCPServer {
       );
     }
     
+    this.plugins = this.loadPlugins();
     this.tools = this.initializeTools();
+  }
+
+  private loadPlugins(): MCPToolPlugin[] {
+    return [googleSheetsPlugin];
   }
 
   private initializeTools(): MCPTool[] {
     const tools: MCPTool[] = [
-      {
-        name: 'query_google_sheets',
-        description: 'Query Google Sheets data using natural language. Supports getting rows, sheet information, and specific ranges.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query: {
-              type: 'string',
-              description: 'Natural language query describing what data to retrieve from Google Sheets'
-            },
-            spreadsheetId: {
-              type: 'string',
-              description: 'Google Sheets spreadsheet ID (optional if default is configured)'
-            },
-            responseFormat: {
-              type: 'string',
-              enum: ['verbal', 'structured', 'both'],
-              description: 'Format of response - verbal for conversational output, structured for raw data, both for complete response'
-            }
-          },
-          required: ['query']
-        }
-      },
+      // Plugin metas
+      ...this.plugins.map((p) => p.meta),
+      // Legacy built-in tools
       {
         name: 'get_sheet_info',
         description: 'Get basic information about a Google Spreadsheet including sheet names and properties.',
@@ -173,75 +160,24 @@ export class MCPServer {
   private async handleToolCall(request: MCPRequest): Promise<MCPResponse> {
     const { name, arguments: args } = request.params || {};
 
+    // Check plugins first
+    const plugin = this.plugins.find((p) => p.meta.name === name);
+    if (plugin) {
+      try {
+        const result = await plugin.run(args, { services: { googleSheets: this.googleSheets, quickBooks: this.quickBooks } });
+        return { result, id: request.id };
+      } catch (err: any) {
+        return this.createErrorResponse(-32603, `Plugin error: ${err.message}`, request.id);
+      }
+    }
+
     switch (name) {
-      case 'query_google_sheets':
-        return await this.handleSheetsQuery(args, request.id);
-      
       case 'get_sheet_info':
         return await this.handleSheetInfo(args, request.id);
-      
       case 'search_quickbooks_invoices':
         return await this.handleQuickBooksQuery(args, request.id);
-      
       default:
-        return this.createErrorResponse(
-          -32602,
-          `Unknown tool: ${name}`,
-          request.id
-        );
-    }
-  }
-
-  private async handleSheetsQuery(args: any, requestId?: string | number): Promise<MCPResponse> {
-    try {
-      const { query, spreadsheetId, responseFormat = 'both' } = args;
-
-      if (!query) {
-        return this.createErrorResponse(
-          -32602,
-          'Query parameter is required',
-          requestId
-        );
-      }
-
-      // Parse the natural language query
-      const parsedQuery = this.googleSheets.parseQuery(query, spreadsheetId);
-      
-      // Execute the query
-      const sheetData = await this.googleSheets.getSheetData({
-        spreadsheetId: parsedQuery.spreadsheetId,
-        sheetName: parsedQuery.sheetName,
-        range: parsedQuery.range,
-        limit: parsedQuery.limit,
-        offset: parsedQuery.offset,
-      });
-
-      // Format response based on requested format
-      let result: any = {};
-
-      if (responseFormat === 'verbal' || responseFormat === 'both') {
-        result.verbalResponse = this.googleSheets.formatForVerbalResponse(sheetData, query);
-      }
-
-      if (responseFormat === 'structured' || responseFormat === 'both') {
-        result.data = sheetData;
-      }
-
-      if (responseFormat === 'both') {
-        result.conversationalContext = this.generateConversationalContext(sheetData, query);
-      }
-
-      return {
-        result,
-        id: requestId,
-      };
-
-    } catch (error: any) {
-      return this.createErrorResponse(
-        -32603,
-        `Failed to query sheets: ${error.message}`,
-        requestId
-      );
+        return this.createErrorResponse(-32602, `Unknown tool: ${name}`, request.id);
     }
   }
 
@@ -350,26 +286,6 @@ export class MCPServer {
       }
       
       context += '. I can provide more details about specific invoices or help you analyze this data further.';
-    }
-    
-    return context;
-  }
-
-  private generateConversationalContext(sheetData: any, originalQuery: string): string {
-    const { rows, headers, sheetName } = sheetData;
-    
-    let context = `Based on your query "${originalQuery}", I retrieved data from the "${sheetName}" sheet. `;
-    
-    if (rows.length === 0) {
-      context += 'The sheet appears to be empty or contains no data in the requested range.';
-    } else {
-      context += `I found ${rows.length} rows of data with columns: ${headers.join(', ')}. `;
-      
-      if (rows.length <= 3) {
-        context += 'Here\'s all the data I found.';
-      } else {
-        context += 'I can provide more details about specific rows or help you analyze this data further.';
-      }
     }
     
     return context;

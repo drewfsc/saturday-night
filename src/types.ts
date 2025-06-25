@@ -29,6 +29,19 @@ export interface MCPTool {
   };
 }
 
+// Plugin-based tool architecture
+export interface ToolPluginContext {
+  services: {
+    googleSheets: any; // GoogleSheetsService
+    quickBooks?: any; // QuickBooksService
+  };
+}
+
+export interface MCPToolPlugin {
+  meta: MCPTool;
+  run: (args: any, context: ToolPluginContext) => Promise<any>;
+}
+
 // Google Sheets Types
 export interface SheetQueryParams {
   spreadsheetId: string;
