@@ -1,6 +1,7 @@
 import { MCPRequest, MCPResponse, MCPTool, MCPError, VerbalResponse, QuickBooksQueryParams } from './types';
 import { GoogleSheetsService } from './google-sheets';
 import { QuickBooksService } from './quickbooks';
+import { withCache } from './cache';
 
 export class MCPServer {
   private googleSheets: GoogleSheetsService;
@@ -10,6 +11,12 @@ export class MCPServer {
   constructor(serviceAccountKey: string, defaultSpreadsheetId?: string, quickBooksClientId?: string, quickBooksClientSecret?: string) {
     this.googleSheets = new GoogleSheetsService(serviceAccountKey, defaultSpreadsheetId);
     
+    // Wrap heavy methods with in-memory cache
+    // Caches sheet reads and invoice searches for ttlSeconds (default 300s)
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore – dynamic reassignment for performance optimisation
+    this.googleSheets.getSheetData = withCache(this.googleSheets.getSheetData.bind(this.googleSheets));
+
     // For POC, initialize QuickBooks service with placeholder values if not provided
     // This allows testing with mock data
     if ((quickBooksClientId && quickBooksClientSecret) || 
@@ -18,6 +25,10 @@ export class MCPServer {
         quickBooksClientId || 'POC_CLIENT_ID', 
         quickBooksClientSecret || 'POC_CLIENT_SECRET'
       );
+
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore – dynamic reassignment for performance optimisation
+      this.quickBooks.searchInvoices = withCache(this.quickBooks.searchInvoices.bind(this.quickBooks));
     }
     
     this.tools = this.initializeTools();

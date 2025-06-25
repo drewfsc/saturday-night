@@ -1,61 +1,36 @@
 import { MCPServer } from './mcp-server';
 import { Env } from './types';
+import { handleCors } from './cors';
+import { route } from './router';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
-      return handleCors(request, env);
+      return handleCors(request, env.ALLOWED_ORIGINS);
     }
 
+    if (!env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+      return new Response(JSON.stringify({ error: 'Missing Google Service Account credentials' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const mcpServer = new MCPServer(
+      env.GOOGLE_SERVICE_ACCOUNT_KEY,
+      env.DEFAULT_SPREADSHEET_ID,
+      env.QUICKBOOKS_CLIENT_ID,
+      env.QUICKBOOKS_CLIENT_SECRET
+    );
+
     try {
-      // Validate environment variables
-      if (!env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-        return createErrorResponse('Missing Google Service Account credentials', 500);
-      }
-
-      // Initialize MCP server
-      const mcpServer = new MCPServer(
-        env.GOOGLE_SERVICE_ACCOUNT_KEY, 
-        env.DEFAULT_SPREADSHEET_ID,
-        env.QUICKBOOKS_CLIENT_ID,
-        env.QUICKBOOKS_CLIENT_SECRET
-      );
-
-      // Handle different endpoints
-      const url = new URL(request.url);
-      const path = url.pathname;
-
-      switch (path) {
-        case '/':
-        case '/health':
-          return handleHealthCheck(env);
-        
-        case '/mcp':
-          return await handleMCPRequest(request, mcpServer, env);
-        
-        case '/test':
-          return await handleTestEndpoint(request, mcpServer, env);
-        
-        case '/test/quickbooks':
-          return await handleQuickBooksTestEndpoint(request, mcpServer, env);
-        
-        case '/auth/quickbooks':
-          return handleQuickBooksAuth(request, env);
-        
-        case '/auth/quickbooks/callback':
-          return await handleQuickBooksCallback(request, env);
-        
-        case '/auth/quickbooks/status':
-          return handleQuickBooksAuthStatus(env);
-        
-        default:
-          return createErrorResponse('Endpoint not found', 404);
-      }
-
+      return await route(request, env, mcpServer);
     } catch (error: any) {
       console.error('Worker error:', error);
-      return createErrorResponse(`Internal server error: ${error.message}`, 500);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
   },
 };
@@ -206,27 +181,6 @@ function handleHealthCheck(env: Env): Response {
   return new Response(JSON.stringify(health, null, 2), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-function handleCors(request: Request, env: Env): Response {
-  const origin = request.headers.get('Origin');
-  const headers: Record<string, string> = {
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Max-Age': '86400',
-  };
-
-  if (env.ALLOWED_ORIGINS && origin) {
-    const allowed = env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
-    if (allowed.includes('*') || allowed.includes(origin)) {
-      headers['Access-Control-Allow-Origin'] = origin;
-    }
-  }
-
-  return new Response(null, {
-    status: 204,
-    headers,
   });
 }
 
