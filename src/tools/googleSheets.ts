@@ -1,5 +1,12 @@
+import { z } from 'zod';
 import { GoogleSheetsService } from '../google-sheets';
 import { MCPToolPlugin } from '../types';
+
+const ArgsSchema = z.object({
+  query: z.string().min(1, 'query is required'),
+  spreadsheetId: z.string().optional(),
+  responseFormat: z.enum(['verbal', 'structured', 'both']).default('both').optional(),
+});
 
 const plugin: MCPToolPlugin = {
   meta: {
@@ -29,10 +36,9 @@ const plugin: MCPToolPlugin = {
   async run(args: any, { services }): Promise<any> {
     const { googleSheets } = services;
 
-    const { query, spreadsheetId, responseFormat = 'both' } = args;
-    if (!query) {
-      throw new Error('Query parameter is required');
-    }
+    const parsedArgs = ArgsSchema.parse(args);
+
+    const { query, spreadsheetId, responseFormat } = parsedArgs;
 
     // Parse query
     const parsed = googleSheets.parseQuery(query, spreadsheetId);

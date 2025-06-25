@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "google-auth-library": "^9.0.0",
-    "googleapis": "^126.0.1"
+    "googleapis": "^126.0.1",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20231025.0",

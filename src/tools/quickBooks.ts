@@ -1,4 +1,10 @@
+import { z } from 'zod';
 import { MCPToolPlugin } from '../types';
+
+const ArgsSchema = z.object({
+  query: z.string().min(1, 'query is required'),
+  responseFormat: z.enum(['verbal', 'structured', 'both']).default('both').optional(),
+});
 
 const plugin: MCPToolPlugin = {
   meta: {
@@ -27,10 +33,8 @@ const plugin: MCPToolPlugin = {
       throw new Error('QuickBooks service is not configured');
     }
 
-    const { query, responseFormat = 'both' } = args;
-    if (!query) {
-      throw new Error('Query parameter is required');
-    }
+    const parsedArgs = ArgsSchema.parse(args);
+    const { query, responseFormat } = parsedArgs;
 
     const parsed = quickBooks.parseQuery(query);
     const data = await quickBooks.searchInvoices(parsed);

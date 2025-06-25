@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { MCPToolPlugin } from '../types';
 
 const plugin: MCPToolPlugin = {
@@ -18,10 +19,9 @@ const plugin: MCPToolPlugin = {
 
   async run(args: any, { services }): Promise<any> {
     const { googleSheets } = services;
-    const { spreadsheetId } = args;
-    if (!spreadsheetId) {
-      throw new Error('Spreadsheet ID is required');
-    }
+    const { spreadsheetId } = z.object({
+      spreadsheetId: z.string().min(1, 'Spreadsheet ID is required'),
+    }).parse(args);
     const info = await googleSheets.getSheetInfo(spreadsheetId);
     return {
       spreadsheetInfo: info,
