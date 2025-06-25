@@ -261,31 +261,53 @@ GOOGLE SHEETS CAPABILITIES:
 - Retrieve specific rows, ranges, or entire sheets
 - Get spreadsheet information and sheet details
 - Format responses for both technical and conversational use
+- Filter data by columns and apply limits
+- Parse natural language queries into structured requests
 
 QUICKBOOKS CAPABILITIES:
-- Search invoices by date range and amount
-- Filter invoices by customer, status, and amount thresholds
+- Search invoices by date range and amount thresholds
+- Filter invoices by customer name, status, and payment terms
 - Retrieve invoice details including line items and payment status
 - Natural language parsing for financial queries
+- Support for amount ranges (e.g., "over $1000", "between $500-$2000")
+- Date range parsing (e.g., "this month", "last week", "January 2025")
 
 USAGE PATTERNS - GOOGLE SHEETS:
 1. "Get all rows from spreadsheet ID [SHEET_ID]"
 2. "Show me the first 10 rows from the Sales sheet in [SHEET_ID]"
 3. "Get information about spreadsheet [SHEET_ID]"
 4. "Retrieve data from range A1:D10 in [SHEET_ID]"
+5. "Get only the Name and Email columns from [SHEET_ID]"
+6. "Show me rows 5-15 from [SHEET_ID]"
 
 USAGE PATTERNS - QUICKBOOKS:
 1. "Show me invoices from January 2025"
 2. "Find invoices over $1000 this month"
 3. "Get invoices between $500 and $2000 from last week"
 4. "Show unpaid invoices for Acme Corporation"
+5. "Find invoices for customer John Smith from last month"
+6. "Get all invoices with amounts greater than $5000"
+7. "Show me overdue invoices from the past 30 days"
+8. "Find invoices with status 'pending' from this quarter"
 
 RESPONSE FORMATS:
 - Verbal: Natural language descriptions of the data
 - Structured: Raw data in JSON format
 - Both: Complete response with conversational context
 
-Always ask for clarification if the query could apply to multiple data sources.
+QUERY EXAMPLES:
+Google Sheets:
+- "Get first 5 rows from the default spreadsheet"
+- "Show me data from columns A, B, and C"
+- "Retrieve rows 10-20 from the sheet"
+
+QuickBooks:
+- "Show me invoices from this month over $1000"
+- "Find unpaid invoices for the last 30 days"
+- "Get invoices between $500-$2000 from January 2025"
+- "Show me all invoices for customer 'Acme Corp'"
+
+Always ask for clarification if the query could apply to multiple data sources. For Google Sheets queries, use the default spreadsheet ID if none is specified. For QuickBooks queries, provide helpful context about the data found and suggest follow-up questions.
 `;
 }
 
@@ -293,8 +315,8 @@ export function generateActionSchema(): object {
   return {
     "openapi": "3.1.0",
     "info": {
-      "title": "Google Sheets MCP API",
-      "description": "Query Google Sheets data using natural language through MCP protocol",
+      "title": "Multi-Source Data MCP API",
+      "description": "Query Google Sheets and QuickBooks data using natural language through MCP protocol",
       "version": "1.0.0"
     },
     "servers": [
@@ -305,8 +327,8 @@ export function generateActionSchema(): object {
     "paths": {
       "/mcp": {
         "post": {
-          "description": "Send MCP requests to query Google Sheets",
-          "operationId": "queryGoogleSheets",
+          "description": "Send MCP requests to query Google Sheets and QuickBooks data",
+          "operationId": "queryMultiSourceData",
           "requestBody": {
             "required": true,
             "content": {
@@ -323,38 +345,141 @@ export function generateActionSchema(): object {
                       "properties": {
                         "name": {
                           "type": "string",
-                          "enum": ["query_google_sheets", "get_sheet_info"]
+                          "enum": ["query_google_sheets", "get_sheet_info", "search_quickbooks_invoices"]
                         },
                         "arguments": {
                           "type": "object",
                           "properties": {
                             "query": {
                               "type": "string",
-                              "description": "Natural language query for Google Sheets data"
+                              "description": "Natural language query describing what data to retrieve"
                             },
                             "spreadsheetId": {
                               "type": "string",
-                              "description": "Google Sheets spreadsheet ID"
+                              "description": "Google Sheets spreadsheet ID (required for Google Sheets queries)"
                             },
                             "responseFormat": {
                               "type": "string",
                               "enum": ["verbal", "structured", "both"],
-                              "default": "both"
+                              "default": "both",
+                              "description": "Format of response - verbal for conversational output, structured for raw data, both for complete response"
                             }
                           },
                           "required": ["query"]
                         }
-                      }
+                      },
+                      "required": ["name", "arguments"]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Request ID for tracking"
                     }
-                  }
+                  },
+                  "required": ["method", "params"]
                 }
               }
             }
           },
           "responses": {
             "200": {
-              "description": "Successful MCP response with Google Sheets data"
+              "description": "Successful MCP response with data",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "result": {
+                        "type": "object",
+                        "description": "Response data containing verbal response, structured data, and conversational context"
+                      },
+                      "error": {
+                        "type": "object",
+                        "description": "Error information if request failed"
+                      },
+                      "id": {
+                        "type": "string",
+                        "description": "Request ID for tracking"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad request - invalid parameters or query"
+            },
+            "500": {
+              "description": "Internal server error"
             }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "GoogleSheetsQuery": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Natural language query for Google Sheets data (e.g., 'Get first 10 rows', 'Show me data from column A')"
+            },
+            "spreadsheetId": {
+              "type": "string",
+              "description": "Google Sheets spreadsheet ID"
+            },
+            "responseFormat": {
+              "type": "string",
+              "enum": ["verbal", "structured", "both"],
+              "default": "both"
+            }
+          },
+          "required": ["query"]
+        },
+        "QuickBooksQuery": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Natural language query for QuickBooks invoices (e.g., 'invoices from January 2025 over $1000', 'invoices for Acme Corp this month')"
+            },
+            "responseFormat": {
+              "type": "string",
+              "enum": ["verbal", "structured", "both"],
+              "default": "both"
+            }
+          },
+          "required": ["query"]
+        }
+      },
+      "examples": {
+        "googleSheetsExample": {
+          "summary": "Query Google Sheets",
+          "value": {
+            "method": "tools/call",
+            "params": {
+              "name": "query_google_sheets",
+              "arguments": {
+                "query": "Get first 5 rows from the sheet",
+                "spreadsheetId": "1sXrmr0GlfKMk6TicjEuLaV22_-j7M_5TEBjy7OvcnwE",
+                "responseFormat": "both"
+              }
+            },
+            "id": "sheets-query-1"
+          }
+        },
+        "quickBooksExample": {
+          "summary": "Search QuickBooks Invoices",
+          "value": {
+            "method": "tools/call",
+            "params": {
+              "name": "search_quickbooks_invoices",
+              "arguments": {
+                "query": "Show me invoices from January 2025 over $1000",
+                "responseFormat": "both"
+              }
+            },
+            "id": "quickbooks-query-1"
           }
         }
       }
