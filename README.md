@@ -337,4 +337,32 @@ MIT License - see LICENSE file for details
 
 ---
 
-**Built with modern web standards for seamless AI-human-data interaction. Perfect for transforming static spreadsheets into conversational data experiences.** 
+**Built with modern web standards for seamless AI-human-data interaction. Perfect for transforming static spreadsheets into conversational data experiences.**
+
+## 🔐 Key Rotation & Secrets Management
+
+### Rotate Google Service Account Key
+1. In Google Cloud Console → IAM & Admin → Service Accounts → select your account.
+2. Under the **Keys** tab, click **Add Key** → **Create new key** (JSON).
+3. Download the file, then immediately delete the old key (three-dot menu → **Delete key**).
+4. **Never commit** the JSON file. Instead, pipe it straight into Wrangler:
+
+```bash
+# Paste the *entire* JSON when prompted
+wrangler secret put GOOGLE_SERVICE_ACCOUNT_KEY
+```
+
+### Rotate QuickBooks OAuth Secrets
+If you regenerate QuickBooks Client Secret, just re-run:
+```bash
+wrangler secret put QUICKBOOKS_CLIENT_ID
+wrangler secret put QUICKBOOKS_CLIENT_SECRET
+```
+
+### Listing & Deleting Secrets
+```bash
+wrangler secret list      # show currently stored secrets
+wrangler secret delete GOOGLE_SERVICE_ACCOUNT_KEY
+```
+
+Secrets live on Cloudflare's edge KV and are encrypted at rest; they never touch your git history. 
