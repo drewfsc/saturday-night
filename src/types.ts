@@ -62,7 +62,7 @@ export interface VerbalResponse {
 
 // Cloudflare Worker Environment
 export interface Env {
-  GOOGLE_SERVICE_ACCOUNT_KEY: string;
+  GOOGLE_SERVICE_ACCOUNT_KEY_JSON: string;
   DEFAULT_SPREADSHEET_ID?: string;
   QUICKBOOKS_CLIENT_ID?: string;
   QUICKBOOKS_CLIENT_SECRET?: string;

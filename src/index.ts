@@ -10,13 +10,21 @@ export default {
 
     try {
       // Validate environment variables
-      if (!env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+      if (!env.GOOGLE_SERVICE_ACCOUNT_KEY_JSON) {
         return createErrorResponse('Missing Google Service Account credentials', 500);
+      }
+
+      // Test JSON parsing of service account key
+      try {
+        JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_KEY_JSON);
+      } catch (parseError: any) {
+        console.error('Service account key JSON parse error:', parseError);
+        return createErrorResponse(`Invalid service account key JSON: ${parseError.message}`, 500);
       }
 
       // Initialize MCP server
       const mcpServer = new MCPServer(
-        env.GOOGLE_SERVICE_ACCOUNT_KEY, 
+        env.GOOGLE_SERVICE_ACCOUNT_KEY_JSON, 
         env.DEFAULT_SPREADSHEET_ID,
         env.QUICKBOOKS_CLIENT_ID,
         env.QUICKBOOKS_CLIENT_SECRET
@@ -194,7 +202,7 @@ function handleHealthCheck(env: Env): Response {
     version: env.MCP_VERSION || '1.1.0',
     environment: env.NODE_ENV || 'production',
     services: {
-      googleSheets: !!env.GOOGLE_SERVICE_ACCOUNT_KEY,
+      googleSheets: !!env.GOOGLE_SERVICE_ACCOUNT_KEY_JSON,
       quickBooks: !!(env.QUICKBOOKS_CLIENT_ID && env.QUICKBOOKS_CLIENT_SECRET),
     },
     configuration: {
@@ -291,7 +299,7 @@ export function generateActionSchema(): object {
     },
     "servers": [
       {
-        "url": "https://your-worker.your-subdomain.workers.dev"
+        "url": "https://google-sheets-mcp-server.drumacmusic.workers.dev"
       }
     ],
     "paths": {

@@ -6,7 +6,21 @@ export class GoogleSheetsService {
 
   constructor(serviceAccountKey: string, defaultSpreadsheetId?: string) {
     this.defaultSpreadsheetId = defaultSpreadsheetId;
-    this.serviceAccountKey = JSON.parse(serviceAccountKey);
+    
+    try {
+      this.serviceAccountKey = JSON.parse(serviceAccountKey);
+      
+      // Validate required fields
+      if (!this.serviceAccountKey.client_email) {
+        throw new Error('Service account key missing client_email');
+      }
+      if (!this.serviceAccountKey.private_key) {
+        throw new Error('Service account key missing private_key');
+      }
+    } catch (error: any) {
+      console.error('Failed to parse service account key:', error);
+      throw new Error(`Invalid service account key: ${error.message}`);
+    }
   }
 
   /**
@@ -82,25 +96,33 @@ export class GoogleSheetsService {
    * Get access token from Google OAuth
    */
   private async getAccessToken(): Promise<string> {
-    const jwt = await this.createJWT();
+    try {
+      const jwt = await this.createJWT();
+      console.log('JWT created successfully, length:', jwt.length);
 
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion: jwt,
-      }),
-    });
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+          assertion: jwt,
+        }),
+      });
 
-    if (!response.ok) {
-      throw new Error(`Failed to get access token: ${response.statusText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('OAuth token request failed:', response.status, errorText);
+        throw new Error(`Failed to get access token: ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json() as { access_token: string };
+      return data.access_token;
+    } catch (error: any) {
+      console.error('getAccessToken error:', error);
+      throw error;
     }
-
-    const data = await response.json() as { access_token: string };
-    return data.access_token;
   }
 
   /**

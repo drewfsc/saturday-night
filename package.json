@@ -18,7 +18,7 @@
     "@types/node": "^20.8.0",
     "typescript": "^5.2.2",
     "vitest": "^0.34.6",
-    "wrangler": "^3.15.0"
+    "wrangler": "^4.21.2"
   },
   "keywords": [
     "mcp",
@@ -29,4 +29,4 @@
   ],
   "author": "Drew McCauley",
   "license": "MIT"
-} 
+}
