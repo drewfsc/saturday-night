@@ -3,6 +3,7 @@ import { GoogleSheetsService } from './google-sheets';
 import { QuickBooksService } from './quickbooks';
 import { withCache } from './cache';
 import googleSheetsPlugin from './tools/googleSheets';
+import quickBooksPlugin from './tools/quickBooks';
 import type { KVNamespace } from '@cloudflare/workers-types';
 
 export class MCPServer {
@@ -53,7 +54,7 @@ export class MCPServer {
   }
 
   private loadPlugins(): MCPToolPlugin[] {
-    return [googleSheetsPlugin];
+    return [googleSheetsPlugin, quickBooksPlugin];
   }
 
   private initializeTools(): MCPTool[] {
