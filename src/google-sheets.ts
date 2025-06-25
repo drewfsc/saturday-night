@@ -27,11 +27,11 @@ export class GoogleSheetsService {
       iat: now
     };
 
-    const encodedHeader = btoa(JSON.stringify(header)).replace(/[+/=]/g, (m) => 
-      ({'+': '-', '/': '_', '=': ''}[m as keyof typeof m] || m)
+    const encodedHeader = btoa(JSON.stringify(header)).replace(/[+/=]/g, (m: string) => 
+      ({'+': '-', '/': '_', '=': ''})[m] || m
     );
-    const encodedPayload = btoa(JSON.stringify(payload)).replace(/[+/=]/g, (m) => 
-      ({'+': '-', '/': '_', '=': ''}[m as keyof typeof m] || m)
+    const encodedPayload = btoa(JSON.stringify(payload)).replace(/[+/=]/g, (m: string) => 
+      ({'+': '-', '/': '_', '=': ''})[m] || m
     );
 
     const unsignedToken = `${encodedHeader}.${encodedPayload}`;
@@ -56,7 +56,7 @@ export class GoogleSheetsService {
     );
 
     const encodedSignature = btoa(String.fromCharCode(...new Uint8Array(signature)))
-      .replace(/[+/=]/g, (m) => ({'+': '-', '/': '_', '=': ''}[m as keyof typeof m] || m));
+      .replace(/[+/=]/g, (m: string) => ({'+': '-', '/': '_', '=': ''})[m] || m);
 
     return `${unsignedToken}.${encodedSignature}`;
   }
@@ -127,7 +127,7 @@ export class GoogleSheetsService {
 
     // Extract limit/count
     const limitMatch = query.match(/(?:first|last|top|limit|show)[\s]*(\d+)/i);
-    const limit = limitMatch ? parseInt(limitMatch[1]) : 5; // Default to 5 rows to prevent large responses
+    const limit = limitMatch?.[1] ? parseInt(limitMatch[1]) : 5; // Default to 5 rows to prevent large responses
 
     // Determine action
     let action: ParsedQuery['action'] = 'get_rows';
@@ -175,7 +175,7 @@ export class GoogleSheetsService {
       // Find specific sheet if name provided
       if (params.sheetName) {
         const foundSheet = sheets.find((sheet: any) => 
-          sheet.properties?.title?.toLowerCase() === params.sheetName.toLowerCase()
+          sheet.properties?.title?.toLowerCase() === params.sheetName?.toLowerCase()
         );
         if (foundSheet) {
           targetSheet = foundSheet;
@@ -244,12 +244,12 @@ export class GoogleSheetsService {
         const columnIndices: number[] = [];
         filteredHeaders = [];
         
-        params.requestedColumns.forEach(requestedCol => {
+        params.requestedColumns.forEach((requestedCol: string) => {
           const index = headers.findIndex(header => 
             header.toLowerCase().includes(requestedCol.toLowerCase()) ||
             requestedCol.toLowerCase().includes(header.toLowerCase())
           );
-          if (index !== -1) {
+          if (index !== -1 && headers[index]) {
             columnIndices.push(index);
             filteredHeaders.push(headers[index]);
           }
@@ -316,7 +316,7 @@ export class GoogleSheetsService {
     for (let i = 0; i < displayLimit; i++) {
       const row = rows[i];
       response += `Row ${i + 1}: `;
-      const rowData = headers.map(header => `${header}: ${row[header]}`).join(', ');
+      const rowData = headers.map(header => `${header}: ${row[header] || ''}`).join(', ');
       response += rowData + '\n';
     }
 

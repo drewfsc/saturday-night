@@ -167,7 +167,7 @@ export class QuickBooksService {
         if (match[2]) {
           // Range found
           dateRange = { start: match[1], end: match[2] };
-        } else {
+        } else if (match[1]) {
           // Single date - create range
           const date = match[1];
           if (lowerQuery.includes('since') || lowerQuery.includes('after') || lowerQuery.includes('from')) {
@@ -188,22 +188,28 @@ export class QuickBooksService {
         dateRange = { start: today, end: today };
       } else if (lowerQuery.includes('this week')) {
         const weekStart = new Date(now.setDate(now.getDate() - now.getDay()));
+        const weekStartStr = weekStart.toISOString().split('T')[0];
+        const todayStr = new Date().toISOString().split('T')[0];
         dateRange = { 
-          start: weekStart.toISOString().split('T')[0], 
-          end: new Date().toISOString().split('T')[0] 
+          start: weekStartStr, 
+          end: todayStr 
         };
       } else if (lowerQuery.includes('this month')) {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthStartStr = monthStart.toISOString().split('T')[0];
+        const todayStr = new Date().toISOString().split('T')[0];
         dateRange = { 
-          start: monthStart.toISOString().split('T')[0], 
-          end: new Date().toISOString().split('T')[0] 
+          start: monthStartStr, 
+          end: todayStr 
         };
       } else if (lowerQuery.includes('last month')) {
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+        const lastMonthStr = lastMonth.toISOString().split('T')[0];
+        const lastMonthEndStr = lastMonthEnd.toISOString().split('T')[0];
         dateRange = { 
-          start: lastMonth.toISOString().split('T')[0], 
-          end: lastMonthEnd.toISOString().split('T')[0] 
+          start: lastMonthStr, 
+          end: lastMonthEndStr 
         };
       }
     }
@@ -224,7 +230,7 @@ export class QuickBooksService {
         if (match[2]) {
           // Range found
           amountRange = { min: parseFloat(match[1]), max: parseFloat(match[2]) };
-        } else {
+        } else if (match[1]) {
           // Single amount
           const amount = parseFloat(match[1]);
           if (lowerQuery.includes('over') || lowerQuery.includes('above') || lowerQuery.includes('greater')) {
@@ -239,7 +245,7 @@ export class QuickBooksService {
 
     // Extract limit
     const limitMatch = query.match(/(?:first|top|limit|show)\s*(\d+)/i);
-    const limit = limitMatch ? parseInt(limitMatch[1]) : 10; // Default to 10 invoices
+    const limit = limitMatch?.[1] ? parseInt(limitMatch[1]) : 10; // Default to 10 invoices
 
     return {
       action,
@@ -411,7 +417,7 @@ export class QuickBooksService {
       response += `  Date: ${invoice.txnDate}\n`;
       response += `  Amount: $${invoice.totalAmt.toFixed(2)}\n`;
       response += `  Balance: $${invoice.balance.toFixed(2)}\n`;
-      if (invoice.line.length > 0 && invoice.line[0].salesItemLineDetail) {
+      if (invoice.line.length > 0 && invoice.line[0]?.salesItemLineDetail) {
         response += `  Item: ${invoice.line[0].salesItemLineDetail.itemRef.name}\n`;
       }
       response += '\n';

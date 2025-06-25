@@ -34,6 +34,7 @@ export interface SheetQueryParams {
   sheetName?: string;
   limit?: number;
   offset?: number;
+  requestedColumns?: string[];
 }
 
 export interface SheetRow {
@@ -51,6 +52,7 @@ export interface SheetData {
     limit?: number;
     offset?: number;
     executedAt: string;
+    filteredColumns?: string[];
   };
 }
 
