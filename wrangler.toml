@@ -20,5 +20,13 @@ NODE_ENV = "production"
 MCP_VERSION = "1.1.0"
 DEFAULT_SPREADSHEET_ID = "1sXrmr0GlfKMk6TicjEuLaV22_-j7M_5TEBjy7OvcnwE"
 
+# KV namespace for caching
+[[kv_namespaces]]
+binding = "CACHE"
+# Replace with your production namespace ID after creation
+id = "00000000000000000000000000000000"
+# Replace with your preview namespace ID for wrangler dev
+preview_id = "00000000000000000000000000000000"
+
 # Node.js compatibility for Google APIs
 node_compat = true 

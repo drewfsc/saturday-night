@@ -1,3 +1,5 @@
+import type { KVNamespace } from '@cloudflare/workers-types';
+
 // MCP Protocol Types
 export interface MCPRequest {
   method: string;

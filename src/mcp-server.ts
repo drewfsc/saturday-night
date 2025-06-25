@@ -2,6 +2,7 @@ import { MCPRequest, MCPResponse, MCPTool, MCPError, VerbalResponse, QuickBooksQ
 import { GoogleSheetsService } from './google-sheets';
 import { QuickBooksService } from './quickbooks';
 import { withCache } from './cache';
+import type { KVNamespace } from '@cloudflare/workers-types';
 
 export class MCPServer {
   private googleSheets: GoogleSheetsService;
