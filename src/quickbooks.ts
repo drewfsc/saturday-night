@@ -4,11 +4,136 @@ export class QuickBooksService {
   private clientId: string;
   private clientSecret: string;
   private accessToken?: string;
+  private refreshToken?: string;
   private companyId?: string;
+  private baseUrl: string;
 
-  constructor(clientId: string, clientSecret: string) {
+  constructor(clientId: string, clientSecret: string, isProduction = false) {
     this.clientId = clientId;
     this.clientSecret = clientSecret;
+    // Use sandbox for development, production for live data
+    this.baseUrl = isProduction 
+      ? 'https://quickbooks.api.intuit.com' 
+      : 'https://sandbox-quickbooks.api.intuit.com';
+  }
+
+  /**
+   * Generate OAuth authorization URL for QuickBooks
+   */
+  generateAuthUrl(redirectUri: string, state?: string): string {
+    const scope = 'com.intuit.quickbooks.accounting';
+    const authUrl = 'https://appcenter.intuit.com/connect/oauth2';
+    
+    const params = new URLSearchParams({
+      'client_id': this.clientId,
+      'scope': scope,
+      'redirect_uri': redirectUri,
+      'response_type': 'code',
+      'access_type': 'offline'
+    });
+
+    if (state) {
+      params.append('state', state);
+    }
+
+    return `${authUrl}?${params.toString()}`;
+  }
+
+  /**
+   * Exchange authorization code for access token
+   */
+  async exchangeCodeForTokens(code: string, redirectUri: string): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    companyId: string;
+  }> {
+    const tokenUrl = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
+    
+    const body = new URLSearchParams({
+      'grant_type': 'authorization_code',
+      'code': code,
+      'redirect_uri': redirectUri
+    });
+
+    const credentials = btoa(`${this.clientId}:${this.clientSecret}`);
+    
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: body.toString()
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`OAuth token exchange failed: ${error}`);
+    }
+
+    const tokenData = await response.json() as any;
+    
+    this.accessToken = tokenData.access_token;
+    this.refreshToken = tokenData.refresh_token;
+    this.companyId = tokenData.realmId;
+
+    return {
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token,
+      companyId: tokenData.realmId
+    };
+  }
+
+  /**
+   * Refresh access token using refresh token
+   */
+  async refreshAccessToken(): Promise<string> {
+    if (!this.refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const tokenUrl = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
+    
+    const body = new URLSearchParams({
+      'grant_type': 'refresh_token',
+      'refresh_token': this.refreshToken
+    });
+
+    const credentials = btoa(`${this.clientId}:${this.clientSecret}`);
+    
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: body.toString()
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Token refresh failed: ${error}`);
+    }
+
+    const tokenData = await response.json() as any;
+    this.accessToken = tokenData.access_token;
+    
+    if (tokenData.refresh_token) {
+      this.refreshToken = tokenData.refresh_token;
+    }
+
+    return tokenData.access_token;
+  }
+
+  /**
+   * Set tokens for API calls (from stored values)
+   */
+  setTokens(accessToken: string, refreshToken: string, companyId: string): void {
+    this.accessToken = accessToken;
+    this.refreshToken = refreshToken;
+    this.companyId = companyId;
   }
 
   /**
@@ -125,17 +250,38 @@ export class QuickBooksService {
   }
 
   /**
-   * Get OAuth access token (for now, we'll need to implement full OAuth flow)
-   * This is a simplified version - in production you'd need the full OAuth dance
+   * Make authenticated API call to QuickBooks
    */
-  private async getAccessToken(): Promise<string> {
-    if (this.accessToken) {
-      return this.accessToken;
+  private async makeApiCall(endpoint: string, retryOnAuth = true): Promise<any> {
+    if (!this.accessToken || !this.companyId) {
+      throw new Error('QuickBooks not authenticated. Please complete OAuth flow first.');
     }
 
-    // For POC, we'll return a placeholder
-    // In production, you'd implement the full QuickBooks OAuth flow
-    throw new Error('QuickBooks OAuth flow not implemented yet. This requires user authorization in production.');
+    const url = `${this.baseUrl}/v3/company/${this.companyId}/${endpoint}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    // Handle token expiration
+    if (response.status === 401 && retryOnAuth && this.refreshToken) {
+      try {
+        await this.refreshAccessToken();
+        return this.makeApiCall(endpoint, false); // Retry once
+      } catch (refreshError) {
+        throw new Error('Authentication failed. Please re-authorize with QuickBooks.');
+      }
+    }
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`QuickBooks API error: ${response.status} - ${error}`);
+    }
+
+    return response.json();
   }
 
   /**
@@ -143,103 +289,67 @@ export class QuickBooksService {
    */
   async searchInvoices(params: QuickBooksQueryParams): Promise<QuickBooksResponse> {
     try {
-      // For POC, return mock data that matches the expected structure
-      // In production, this would make real QuickBooks API calls
-      
-      const mockInvoices: QuickBooksInvoice[] = [
-        {
-          id: "1",
-          docNumber: "INV-001",
-          txnDate: "2025-01-15",
-          dueDate: "2025-02-15",
-          totalAmt: 1500.00,
-          balance: 1500.00,
-          customerRef: {
-            value: "1",
-            name: "Acme Corporation"
-          },
-          line: [{
-            amount: 1500.00,
-            detailType: "SalesItemLineDetail",
-            salesItemLineDetail: {
-              itemRef: { value: "1", name: "Consulting Services" },
-              qty: 10,
-              unitPrice: 150.00
-            }
-          }]
-        },
-        {
-          id: "2", 
-          docNumber: "INV-002",
-          txnDate: "2025-01-20",
-          dueDate: "2025-02-20",
-          totalAmt: 750.50,
-          balance: 0.00,
-          customerRef: {
-            value: "2",
-            name: "Tech Solutions Inc"
-          },
-          line: [{
-            amount: 750.50,
-            detailType: "SalesItemLineDetail",
-            salesItemLineDetail: {
-              itemRef: { value: "2", name: "Software License" },
-              qty: 1,
-              unitPrice: 750.50
-            }
-          }]
-        },
-        {
-          id: "3",
-          docNumber: "INV-003", 
-          txnDate: "2025-01-22",
-          dueDate: "2025-02-22",
-          totalAmt: 2250.00,
-          balance: 2250.00,
-          customerRef: {
-            value: "3",
-            name: "Global Enterprises"
-          },
-          line: [{
-            amount: 2250.00,
-            detailType: "SalesItemLineDetail",
-            salesItemLineDetail: {
-              itemRef: { value: "3", name: "Premium Support" },
-              qty: 3,
-              unitPrice: 750.00
-            }
-          }]
-        }
-      ];
+      // Build QuickBooks SQL query
+      let query = "SELECT * FROM Invoice";
+      const conditions: string[] = [];
 
-      // Filter by date range
-      let filteredInvoices = mockInvoices;
+      // Add date filter
       if (params.dateRange) {
-        filteredInvoices = filteredInvoices.filter(invoice => {
-          const invoiceDate = new Date(invoice.txnDate);
-          const startDate = new Date(params.dateRange!.start);
-          const endDate = new Date(params.dateRange!.end);
-          return invoiceDate >= startDate && invoiceDate <= endDate;
-        });
+        conditions.push(`TxnDate >= '${params.dateRange.start}'`);
+        conditions.push(`TxnDate <= '${params.dateRange.end}'`);
       }
 
-      // Filter by amount range
+      // Add amount filter
       if (params.amountRange) {
-        filteredInvoices = filteredInvoices.filter(invoice => {
-          return invoice.totalAmt >= params.amountRange!.min && 
-                 invoice.totalAmt <= params.amountRange!.max;
-        });
+        conditions.push(`TotalAmt >= ${params.amountRange.min}`);
+        conditions.push(`TotalAmt <= ${params.amountRange.max}`);
       }
 
-      // Apply limit
-      if (params.limit) {
-        filteredInvoices = filteredInvoices.slice(0, params.limit);
+      if (conditions.length > 0) {
+        query += ` WHERE ${conditions.join(' AND ')}`;
       }
+
+      // Add ordering and limit
+      query += ' ORDER BY TxnDate DESC';
+      if (params.limit) {
+        query += ` MAXRESULTS ${params.limit}`;
+      }
+
+      // Make API call
+      const response = await this.makeApiCall(`query?query=${encodeURIComponent(query)}`);
+      
+      const invoices = response.QueryResponse?.Invoice || [];
+      
+      // Transform QuickBooks format to our standardized format
+      const transformedInvoices: QuickBooksInvoice[] = invoices.map((invoice: any) => ({
+        id: invoice.Id,
+        docNumber: invoice.DocNumber,
+        txnDate: invoice.TxnDate,
+        dueDate: invoice.DueDate,
+        totalAmt: parseFloat(invoice.TotalAmt || '0'),
+        balance: parseFloat(invoice.Balance || '0'),
+        customerRef: {
+          value: invoice.CustomerRef?.value || '',
+          name: invoice.CustomerRef?.name || 'Unknown Customer'
+        },
+        line: invoice.Line?.map((line: any) => ({
+          amount: parseFloat(line.Amount || '0'),
+          detailType: line.DetailType,
+          salesItemLineDetail: line.SalesItemLineDetail ? {
+            itemRef: {
+              value: line.SalesItemLineDetail.ItemRef?.value || '',
+              name: line.SalesItemLineDetail.ItemRef?.name || 'Unknown Item'
+            },
+            qty: parseFloat(line.SalesItemLineDetail.Qty || '0'),
+            unitPrice: parseFloat(line.SalesItemLineDetail.UnitPrice || '0')
+          } : undefined
+        })) || []
+      }));
 
       return {
-        companyId: "mock-company-123",
-        invoices: filteredInvoices,
-        totalCount: filteredInvoices.length,
+        companyId: this.companyId!,
+        invoices: transformedInvoices,
+        totalCount: transformedInvoices.length,
         queryInfo: {
           dateRange: params.dateRange,
           amountRange: params.amountRange,
@@ -250,6 +360,18 @@ export class QuickBooksService {
 
     } catch (error: any) {
       throw new Error(`Failed to search QuickBooks invoices: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get company information
+   */
+  async getCompanyInfo(): Promise<any> {
+    try {
+      const response = await this.makeApiCall('companyinfo/1');
+      return response.QueryResponse?.CompanyInfo?.[0];
+    } catch (error: any) {
+      throw new Error(`Failed to get company info: ${error.message}`);
     }
   }
 

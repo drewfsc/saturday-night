@@ -40,6 +40,15 @@ export default {
         case '/test/quickbooks':
           return await handleQuickBooksTestEndpoint(request, mcpServer, env);
         
+        case '/auth/quickbooks':
+          return handleQuickBooksAuth(request, env);
+        
+        case '/auth/quickbooks/callback':
+          return await handleQuickBooksCallback(request, env);
+        
+        case '/auth/quickbooks/status':
+          return handleQuickBooksAuthStatus(env);
+        
         default:
           return createErrorResponse('Endpoint not found', 404);
       }
@@ -130,9 +139,10 @@ async function handleTestEndpoint(request: Request, mcpServer: MCPServer, env: E
 async function handleQuickBooksTestEndpoint(request: Request, mcpServer: MCPServer, env: Env): Promise<Response> {
   // Test endpoint for QuickBooks functionality
   try {
-    if (!env.QUICKBOOKS_CLIENT_ID || !env.QUICKBOOKS_CLIENT_SECRET) {
-      return createErrorResponse('QuickBooks credentials not configured', 400);
-    }
+    // For POC, we'll allow testing with mock data even without credentials
+    // if (!env.QUICKBOOKS_CLIENT_ID || !env.QUICKBOOKS_CLIENT_SECRET) {
+    //   return createErrorResponse('QuickBooks credentials not configured', 400);
+    // }
 
     const url = new URL(request.url);
     const query = url.searchParams.get('query') || 'show me invoices from January 2025 over $1000';
@@ -342,4 +352,175 @@ export function generateActionSchema(): object {
       }
     }
   };
+}
+
+function handleQuickBooksAuth(request: Request, env: Env): Response {
+  // Generate OAuth authorization URL
+  if (!env.QUICKBOOKS_CLIENT_ID) {
+    return createErrorResponse('QuickBooks Client ID not configured', 400);
+  }
+
+  const url = new URL(request.url);
+  const redirectUri = `${url.origin}/auth/quickbooks/callback`;
+  const state = generateRandomState();
+
+  const authUrl = generateQuickBooksAuthUrl(env.QUICKBOOKS_CLIENT_ID, redirectUri, state);
+
+  // For web apps, redirect to QuickBooks
+  // For API usage, return the URL for manual navigation
+  const userAgent = request.headers.get('User-Agent') || '';
+  if (userAgent.includes('Mozilla') || userAgent.includes('Chrome')) {
+    // Browser request - redirect
+    return new Response(null, {
+      status: 302,
+      headers: { 'Location': authUrl }
+    });
+  } else {
+    // API request - return JSON with URL
+    return new Response(JSON.stringify({
+      authUrl,
+      instructions: 'Navigate to this URL in your browser to authorize QuickBooks access',
+      callbackUrl: redirectUri
+    }, null, 2), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+async function handleQuickBooksCallback(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const error = url.searchParams.get('error');
+  const companyId = url.searchParams.get('realmId');
+
+  if (error) {
+    return createErrorResponse(`QuickBooks authorization failed: ${error}`, 400);
+  }
+
+  if (!code || !companyId) {
+    return createErrorResponse('Missing authorization code or company ID', 400);
+  }
+
+  try {
+    // Exchange code for tokens
+    const redirectUri = `${url.origin}/auth/quickbooks/callback`;
+    const tokens = await exchangeQuickBooksCode(code, redirectUri, env);
+
+    // Store tokens securely (in production, use KV storage or database)
+    // For now, we'll return them for manual storage
+    const successResponse = {
+      success: true,
+      message: 'QuickBooks authorization successful!',
+      companyId,
+      tokens: {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresIn: tokens.expires_in
+      },
+      instructions: 'Store these tokens securely. The access token expires in 1 hour, use the refresh token to get new ones.'
+    };
+
+    // Return HTML response for better user experience
+    const htmlResponse = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>QuickBooks Authorization Success</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .success { color: #28a745; }
+        .code { background: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .warning { color: #dc3545; font-weight: bold; }
+      </style>
+    </head>
+    <body>
+      <h1 class="success">✅ QuickBooks Authorization Successful!</h1>
+      <p>Your QuickBooks account has been successfully connected.</p>
+      <p><strong>Company ID:</strong> ${companyId}</p>
+      <p class="warning">⚠️ Store these tokens securely:</p>
+      <pre class="code">${JSON.stringify(successResponse.tokens, null, 2)}</pre>
+      <p><em>The access token expires in 1 hour. Use the refresh token to get new ones.</em></p>
+    </body>
+    </html>`;
+
+    return new Response(htmlResponse, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html' }
+    });
+
+  } catch (error: any) {
+    return createErrorResponse(`Token exchange failed: ${error.message}`, 500);
+  }
+}
+
+function handleQuickBooksAuthStatus(env: Env): Response {
+  // Check if QuickBooks is configured and potentially authenticated
+  const status = {
+    configured: !!(env.QUICKBOOKS_CLIENT_ID && env.QUICKBOOKS_CLIENT_SECRET),
+    clientIdPresent: !!env.QUICKBOOKS_CLIENT_ID,
+    clientSecretPresent: !!env.QUICKBOOKS_CLIENT_SECRET,
+    // In production, check if we have stored tokens
+    authenticated: false, // Would check KV storage or database
+    instructions: {
+      configure: 'Set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET environment variables',
+      authenticate: 'Visit /auth/quickbooks to connect your QuickBooks account'
+    }
+  };
+
+  return new Response(JSON.stringify(status, null, 2), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+function generateRandomState(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => 
+    byte.toString(16).padStart(2, '0')
+  ).join('');
+}
+
+function generateQuickBooksAuthUrl(clientId: string, redirectUri: string, state: string): string {
+  const scope = 'com.intuit.quickbooks.accounting';
+  const authUrl = 'https://appcenter.intuit.com/connect/oauth2';
+  
+  const params = new URLSearchParams({
+    'client_id': clientId,
+    'scope': scope,
+    'redirect_uri': redirectUri,
+    'response_type': 'code',
+    'access_type': 'offline',
+    'state': state
+  });
+
+  return `${authUrl}?${params.toString()}`;
+}
+
+async function exchangeQuickBooksCode(code: string, redirectUri: string, env: Env): Promise<any> {
+  const tokenUrl = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
+  
+  const body = new URLSearchParams({
+    'grant_type': 'authorization_code',
+    'code': code,
+    'redirect_uri': redirectUri
+  });
+
+  const credentials = btoa(`${env.QUICKBOOKS_CLIENT_ID}:${env.QUICKBOOKS_CLIENT_SECRET}`);
+  
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${credentials}`,
+      'Accept': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: body.toString()
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OAuth token exchange failed: ${error}`);
+  }
+
+  return response.json();
 } 

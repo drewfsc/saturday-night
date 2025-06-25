@@ -10,8 +10,14 @@ export class MCPServer {
   constructor(serviceAccountKey: string, defaultSpreadsheetId?: string, quickBooksClientId?: string, quickBooksClientSecret?: string) {
     this.googleSheets = new GoogleSheetsService(serviceAccountKey, defaultSpreadsheetId);
     
-    if (quickBooksClientId && quickBooksClientSecret) {
-      this.quickBooks = new QuickBooksService(quickBooksClientId, quickBooksClientSecret);
+    // For POC, initialize QuickBooks service with placeholder values if not provided
+    // This allows testing with mock data
+    if ((quickBooksClientId && quickBooksClientSecret) || 
+        (!quickBooksClientId && !quickBooksClientSecret)) {
+      this.quickBooks = new QuickBooksService(
+        quickBooksClientId || 'POC_CLIENT_ID', 
+        quickBooksClientSecret || 'POC_CLIENT_SECRET'
+      );
     }
     
     this.tools = this.initializeTools();
